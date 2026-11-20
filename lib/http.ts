@@ -16,13 +16,14 @@ export async function requireUser() {
 }
 
 export function errorResponse(e: unknown) {
-  const message =
-    e instanceof Error ? e.message : 'Unexpected error';
-
-  return json(
-    { error: message },
-    message === 'UNAUTHORIZED' ? 401 : 400
-  );
+  if (e instanceof Error && e.message === 'UNAUTHORIZED') {
+    return json({ error: 'Authentication required.' }, 401);
+  }
+  if (e instanceof SyntaxError) {
+    return json({ error: 'Request body must be valid JSON.' }, 400);
+  }
+  console.error('API request failed:', e);
+  return json({ error: 'An unexpected server error occurred.' }, 500);
 }
 
 export async function isMember(

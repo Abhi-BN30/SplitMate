@@ -78,13 +78,13 @@ The schema is in `db/schema.sql`. It is safe to run repeatedly because the table
 
 ## 3. Receipt scanning
 
-Receipt OCR uses **Tesseract.js** (open-source OCR) in the browser. Image bills (JPG, PNG, WEBP) are upscaled before recognition. The receipt header is used to crop the item table and run a separate table-focused OCR pass. Rows are extracted only when they begin with a printed item sequence number; the address, phone, GSTIN and bill metadata are excluded. The parser uses quantity × unit-price checks and subtotal reconciliation to repair common currency-symbol OCR errors. PDFs are rendered page-by-page using PDF.js (up to the first five pages), then passed through the same OCR pipeline. No OpenAI key or paid OCR API is used.
+Receipt OCR uses **Tesseract.js** (open-source OCR) in the browser. Images are resized within fixed pixel and edge limits to avoid excessive memory use; low-contrast item tables receive an additional enhanced OCR pass. The receipt header is used to crop the item table, and the parser accepts both numbered and unnumbered rows when they appear in that table region. Rows found outside a confident table crop must still have a printed sequence number to avoid mistaking address, phone, GSTIN and bill metadata for purchased items. The parser checks quantity × unit-price consistency and uses bounded subtotal reconciliation to repair common currency-symbol OCR errors. PDFs are rendered page-by-page using PDF.js (up to the first five pages), then passed through the same OCR pipeline. No OpenAI key or paid OCR API is used.
 
 The receipt parser looks for the item table header (`ITEM`, `QTY`, `UNIT`, `TOTAL`) and only parses rows between that header and the first subtotal/tax/total section. It uses the detected column positions to keep item names, quantities, unit prices and line totals separate. This deliberately avoids treating restaurant address, phone number, GSTIN, bill number and other header text as purchased items. Taxes, service charge, discount and subtotal are read from their own labelled lines.
 
-OCR is not perfect, especially on low-resolution, skewed, faded or unusual receipts. Every extracted field remains editable and the parser displays review warnings when item totals do not match the printed subtotal. If no valid item rows are found, it leaves a blank manual row rather than inventing items. The English OCR model is downloaded on first use, so an internet connection is needed for the initial scan.
+OCR is not perfect, especially on low-resolution, skewed, faded or unusual receipts. Every extracted field remains editable and the parser displays review warnings when item totals do not match the printed subtotal. If no valid item rows are found, it leaves a blank manual row rather than inventing items. Images up to 20 MB can be scanned locally; larger images are reduced in the browser before upload. PDFs must be smaller than 4 MB to fit within Vercel Function request limits. The English OCR model is downloaded on first use, so an internet connection is needed for the initial scan.
 
-**Production storage note:** For local development, scanned image files are written to `public/uploads`. Vercel's filesystem is ephemeral and public receipt URLs are not appropriate for private financial documents. Before production use, replace this local upload adapter with private object storage (e.g. S3-compatible storage or Vercel Blob with private access/signed URLs) and keep the object key in `expenses.receipt_url`. Do not deploy sensitive receipt storage using the local adapter unchanged.
+Receipt files are stored in the configured PostgreSQL database, not on the Vercel filesystem. Stored receipts are served through an authenticated API route and are available only to members of the associated group. This keeps uploads persistent across deployments and avoids public receipt URLs. The additional `receipt_uploads` table is created by `db/schema.sql`.
 
 ## 4. Calculation rules
 
@@ -101,10 +101,10 @@ For restaurant bills where taxes are already included in the item price, enter z
 
 ## 5. Deploy to Vercel
 
-1. Push this folder to a GitHub repository.
+1. Push this folder to a GitHub repository. The project requires Node.js 20.9 or later.
 2. Import the repository into Vercel.
-3. Add `DATABASE_URL`, `SESSION_SECRET` and `APP_URL` to Vercel project environment variables. No OCR API key is needed.
-4. Set `APP_URL` to the deployed HTTPS origin.
+3. Add `DATABASE_URL` and a cryptographically random `SESSION_SECRET` (at least 32 characters) to Vercel project environment variables. `APP_URL` is optional; invite links use the current deployment origin when it is not set. No OCR API key is needed.
+4. Run `npm run build` or deploy from Vercel; `npm run lint` and `npm run typecheck` are available for local checks.
 5. Run the schema initialization against Neon before first use (`npm run db:init` locally with the production `DATABASE_URL`, or execute `db/schema.sql` in Neon SQL Editor).
 6. Deploy.
 
@@ -115,7 +115,7 @@ PWA installation requires HTTPS in production. iOS users install through Safari'
 This is a functional Phase 1 starter, but it should receive a production-hardening pass before handling real financial records:
 
 - Add durable rate limiting for PIN login attempts (e.g. Upstash Redis or a database-backed lockout policy), account recovery with verified email/SMS OTP, and optional passkeys/biometrics.
-- Replace local receipt storage with private object storage and signed URLs.
+- Monitor PostgreSQL storage usage because uploaded receipt files are stored as database binary data.
 - Add transactional email/SMS delivery for account recovery and invite notifications.
 - Add a proper push notification subscription/delivery service if push notifications are required; the current notifications are in-app.
 - Add edit-expense workflows with immutable revision/audit records, and admin member removal/invitation revocation UI.

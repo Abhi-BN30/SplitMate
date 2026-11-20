@@ -1,7 +1,7 @@
 export type ItemInput={name:string;quantity:number;unitPricePaise:number;selectedUserIds:string[]};
 export function allocateProportionally(total:number,weights:number[]){
  if(!weights.length)return [] as number[]; const sum=weights.reduce((a,b)=>a+b,0); if(sum<=0)return weights.map(()=>0);
- const exact=weights.map(w=>total*w/sum); const out=exact.map(Math.floor); let left=total-out.reduce((a,b)=>a+b,0);
+ const exact=weights.map(w=>total*w/sum); const out=exact.map(Math.floor); const left=total-out.reduce((a,b)=>a+b,0);
  const order=exact.map((v,i)=>({i,frac:v-Math.floor(v)})).sort((a,b)=>b.frac-a.frac);
  for(let i=0;i<left;i++)out[order[i%order.length].i]++; return out;
 }
